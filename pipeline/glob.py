@@ -23,6 +23,30 @@ def iglob(pathname):
 
     The pattern may contain simple shell-style wildcards a la fnmatch.
 
+    The pattern may also contain '**' to denote a recursion root.
+
+    """
+    if '**' in pathname:
+        # More than one appearance of '**' is redundant as we would
+        # walk there anyway
+        recurse_root, pattern = pathname.split('**', 1)
+        recurse_dirs = _glob_simple(recurse_root)
+        for path in recurse_dirs:
+            # Cases:
+            # pattern is expected /*.{js,css,less,coffee} etc
+            # eg js/**/*.js
+            # will find js/f.js, js/foo/bar.js js/foo/bar/bat/baz/fux.js etc
+            pattern = pattern.lstrip('/')
+            for obj in _rglob(pattern, path):
+                yield obj
+    else:
+        for obj in _glob_simple(pathname):
+            yield obj
+
+def _glob_simple(pathname):
+    """Return an iterator which yields the paths matching a pathname pattern.
+
+    The pattern may contain simple shell-style wildcards a la fnmatch.
     """
     if not has_magic(pathname):
         try:
@@ -34,27 +58,35 @@ def iglob(pathname):
         return
     dirname, basename = os.path.split(pathname)
     if not dirname:
-        for name in glob1(dirname, basename):
+        for name in _listdir_pattern(None, basename):
             yield name
         return
     if has_magic(dirname):
-        dirs = iglob(dirname)
+        dirs = _glob_simple(dirname)
     else:
         dirs = [dirname]
     if has_magic(basename):
-        glob_in_dir = glob1
+        glob_in_dir = _listdir_pattern
     else:
-        glob_in_dir = glob0
+        glob_in_dir = _listdir_basename
     for dirname in dirs:
         for name in glob_in_dir(dirname, basename):
             yield os.path.join(dirname, name)
 
-# These 2 helper functions non-recursively glob inside a literal directory.
-# They return a list of basenames. `glob1` accepts a pattern while `glob0`
-# takes a literal basename (so it only has to check for its existence).
+
+def _rglob(pattern, dirbase):
+    """Recursively walk dirbase and yield pattern matches"""
+    result = []
+    dirnames, filenames = default_storage.listdir(dirbase)
+    for fname in filenames:
+        if fnmatch.fnmatch(fname, pattern):
+            result.append(os.path.join(dirbase, fname))
+    for dirn in dirnames:
+        result.extend(_rglob(pattern, os.path.join(dirbase, dirn)))
+    return result
 
 
-def glob1(dirname, pattern):
+def _listdir_pattern(dirname, pattern):
     try:
         directories, files = default_storage.listdir(dirname)
         names = directories + files
@@ -63,11 +95,11 @@ def glob1(dirname, pattern):
         # and storage implementations are really exotic.
         return []
     if pattern[0] != '.':
-        names = [x for x in names if x[0] != '.']
+        names = filter(lambda x: x[0] != '.', names)
     return fnmatch.filter(names, pattern)
 
 
-def glob0(dirname, basename):
+def _listdir_basename(dirname, basename):
     if default_storage.exists(os.path.join(dirname, basename)):
         return [basename]
     return []
