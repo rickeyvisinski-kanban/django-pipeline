@@ -37,6 +37,7 @@ class GlobTest(TestCase):
         self.mktemp('ZZZ')
         self.mktemp('a', 'bcd', 'EF')
         self.mktemp('a', 'bcd', 'efg', 'ha')
+        self.mktemp('r', 'EF')
 
     def glob(self, *parts):
         if len(parts) == 1:
@@ -99,3 +100,44 @@ class GlobTest(TestCase):
         paths = glob.glob('*' + os.sep)
         self.assertEqual(len(paths), 4)
         self.assertTrue(all([os.sep in path for path in paths]))
+
+
+    def test_rglob(self):
+        eq = self.assertSequencesEqual
+        fs = ('aab', 'F'), ('aaa', 'zzzF'), ('a', 'bcd', 'EF'), ('r', 'EF')
+        expected = [os.path.abspath(self.norm(*i)) for i in fs]
+        res = glob(os.path.join(self.tempdir, '**F'))
+        eq(expected, [os.path.abspath(i) for i in res])
+
+        bcds = ('a', 'bcd', 'EF'), ('a', 'bcd', 'efg', 'ha')
+        expected = [os.path.abspath(self.norm(*i)) for i in bcds]
+        pat = os.path.join(self.tempdir, '**/bcd/*')
+        res = glob(pat)
+        eq(expected, [os.path.abspath(i) for i in res])
+
+        expected = []
+        pat = os.path.join(self.tempdir, 'a/**/bcd')
+        res = glob(pat)
+        eq(expected, [os.path.abspath(i) for i in res])
+
+        predir = os.path.abspath(os.curdir)
+        try:
+            os.chdir(self.norm('.'))
+            expected = [os.path.join('aaa', 'zzzF')]
+            res = glob('**zz*F')
+            eq(expected, res)
+
+            efs = ('r', 'EF'), ('a', 'bcd', 'EF')
+            expected = [os.path.join(*i) for i in efs]
+            res = glob('**EF')
+            eq(expected, res)
+
+            # shouldn't be yielded: deep = os.path.join('a', 'bcd', 'efg', 'ha')
+            expected = []
+            res = glob('*efg/ha')
+            eq(expected, res)
+        finally:
+            os.chdir(predir)
+
+if __name__ == '__main__':
+    unittest.main()
